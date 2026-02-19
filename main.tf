@@ -3,6 +3,7 @@ provider "aws" {
   region = "ap-northeast-2"
 }
 
+# User
 resource "aws_iam_user" "portfolio_user" {
   name = "portfolio-user"
   path = "/"
@@ -27,6 +28,7 @@ resource "aws_iam_user_group_membership" "portfolio_user_attach" {
   user   = aws_iam_user.portfolio_user.name
 }
 
+# VPC
 resource "aws_vpc" "portfolio_vpc" {
   cidr_block = "10.0.0.0/16"
   enable_dns_support = true
@@ -125,20 +127,51 @@ resource "aws_route_table_association" "portfolio_private_assoc_b" {
 #   subnet_id = aws_subnet.portfolio_private_subnet_b.id
 # }
 
-# resource "aws_subnet" "portfolio_database_subnet_a" {
-#   vpc_id = aws_vpc.portfolio_vpc.id
-#   availability_zone = "ap-northeast-2a"
-#   cidr_block = "10.0.60.0/20"
-#   tags = {
-#     Name = "portfolio_database_subnet_a"
-#   }
-# }
-#
-# resource "aws_subnet" "portfolio_database_subnet_b" {
-#   vpc_id = aws_vpc.portfolio_vpc.id
-#   availability_zone = "ap-northeast-2b"
-#   cidr_block = "10.0.72.0/20"
-#   tags = {
-#     Name = "portfolio_database_subnet_b"
-#   }
-# }
+resource "aws_subnet" "portfolio_database_subnet_a" {
+  vpc_id = aws_vpc.portfolio_vpc.id
+  availability_zone = "ap-northeast-2a"
+  cidr_block = "10.0.64.0/20"
+  tags = {
+    Name = "portfolio-database-subnet-a"
+  }
+}
+
+resource "aws_subnet" "portfolio_database_subnet_b" {
+  vpc_id = aws_vpc.portfolio_vpc.id
+  availability_zone = "ap-northeast-2b"
+  cidr_block = "10.0.80.0/20"
+  tags = {
+    Name = "portfolio-database-subnet-b"
+  }
+}
+
+resource "aws_route_table" "portfolio_database_rt" {
+  vpc_id = aws_vpc.portfolio_vpc.id
+  tags = {
+    Name = "portfolio-database-route-table"
+  }
+}
+
+resource "aws_route_table_association" "portfolio_database_assoc_a" {
+  subnet_id = aws_subnet.portfolio_database_subnet_a.id
+  route_table_id = aws_route_table.portfolio_database_rt.id
+}
+
+resource "aws_route_table_association" "portfolio_database_assoc_b" {
+  subnet_id = aws_subnet.portfolio_database_subnet_b.id
+  route_table_id = aws_route_table.portfolio_database_rt.id
+}
+
+# Security Group
+
+# ALB
+
+# EC2
+
+# ASG
+
+# RDS
+
+# S3
+
+# Cloudfront

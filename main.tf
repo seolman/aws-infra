@@ -65,13 +65,15 @@ resource "aws_subnet" "portfolio_public_subnet_b" {
 
 resource "aws_default_route_table" "public_rt" {
   default_route_table_id = aws_vpc.portfolio_vpc.default_route_table_id
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.portfolio_igw.id
-  }
   tags = {
     Name = "portfolio-public-route-table"
   }
+}
+
+resource "aws_route" "public_internet_r" {
+  route_table_id = aws_default_route_table.public_rt.id
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id = aws_internet_gateway.portfolio_igw.id
 }
 
 resource "aws_route_table_association" "portfolio_public_assoc_a" {
@@ -102,30 +104,77 @@ resource "aws_subnet" "portfolio_private_subnet_b" {
   }
 }
 
-resource "aws_route_table" "portfolio_private_rt" {
+resource "aws_route_table" "portfolio_private_rt_a" {
   vpc_id = aws_vpc.portfolio_vpc.id
   tags = {
-    Name = "portfolio-private-route-table"
+    Name = "portfolio-private-route-table-a"
   }
 }
 
 resource "aws_route_table_association" "portfolio_private_assoc_a" {
   subnet_id = aws_subnet.portfolio_private_subnet_a.id
-  route_table_id = aws_route_table.portfolio_private_rt.id
+  route_table_id = aws_route_table.portfolio_private_rt_a.id
+}
+
+resource "aws_route_table" "portfolio_private_rt_b" {
+  vpc_id = aws_vpc.portfolio_vpc.id
+  tags = {
+    Name = "portfolio-private-route-table-b"
+  }
 }
 
 resource "aws_route_table_association" "portfolio_private_assoc_b" {
   subnet_id = aws_subnet.portfolio_private_subnet_b.id
-  route_table_id = aws_route_table.portfolio_private_rt.id
+  route_table_id = aws_route_table.portfolio_private_rt_b.id
 }
 
-# resource "aws_nat_gateway" "portfolio_ngw_a" {
-#   subnet_id = aws_subnet.portfolio_private_subnet_a.id
-# }
-#
-# resource "aws_nat_gateway" "portfolio_ngw_b" {
-#   subnet_id = aws_subnet.portfolio_private_subnet_b.id
-# }
+resource "aws_eip" "portfolio_nat_eip_a" {
+  domain = "vpc"
+  tags = {
+    Name = "portfolio-nat-eip-a"
+  }
+}
+
+resource "aws_nat_gateway" "portfolio_ngw_a" {
+  allocation_id = aws_eip.portfolio_nat_eip_a.id
+  subnet_id = aws_subnet.portfolio_public_subnet_a.id
+  depends_on = [
+    aws_internet_gateway.portfolio_igw
+  ]
+  tags = {
+    Name = "portfolio-ngw-a"
+  }
+}
+
+resource "aws_route" "private_route_a" {
+  route_table_id = aws_route_table.portfolio_private_rt_a.id
+  destination_cidr_block = "0.0.0.0/0"
+  nat_gateway_id = aws_nat_gateway.portfolio_ngw_a.id
+}
+
+resource "aws_eip" "portfolio_nat_eip_b" {
+  domain = "vpc"
+  tags = {
+    Name = "portfolio-nat-eip-b"
+  }
+}
+
+resource "aws_nat_gateway" "portfolio_ngw_b" {
+  allocation_id = aws_eip.portfolio_nat_eip_b.id
+  subnet_id = aws_subnet.portfolio_public_subnet_b.id
+  depends_on = [
+    aws_internet_gateway.portfolio_igw
+  ]
+  tags = {
+    Name = "portfolio-ngw-b"
+  }
+}
+
+resource "aws_route" "private_route_b" {
+  route_table_id = aws_route_table.portfolio_private_rt_b.id
+  destination_cidr_block = "0.0.0.0/0"
+  nat_gateway_id = aws_nat_gateway.portfolio_ngw_b.id
+}
 
 resource "aws_subnet" "portfolio_database_subnet_a" {
   vpc_id = aws_vpc.portfolio_vpc.id
@@ -163,6 +212,7 @@ resource "aws_route_table_association" "portfolio_database_assoc_b" {
 }
 
 # ALB
+# TODO https
 resource "aws_security_group" "portfolio_alb_sg" {
   name = "portfolio-alb-sg"
   vpc_id = aws_vpc.portfolio_vpc.id

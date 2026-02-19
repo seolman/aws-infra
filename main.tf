@@ -162,16 +162,145 @@ resource "aws_route_table_association" "portfolio_database_assoc_b" {
   route_table_id = aws_route_table.portfolio_database_rt.id
 }
 
-# Security Group
-
 # ALB
+resource "aws_security_group" "portfolio_alb_sg" {
+  name = "portfolio-alb-sg"
+  vpc_id = aws_vpc.portfolio_vpc.id
+}
 
-# EC2
+resource "aws_vpc_security_group_ingress_rule" "portfolio_alb_http_in" {
+  security_group_id = aws_security_group.portfolio_alb_sg.id
+  ip_protocol = "tcp"
+  cidr_ipv4 = "0.0.0.0/0"
+  to_port = 80
+  from_port = 80
+}
+
+resource "aws_vpc_security_group_egress_rule" "portfolio_alb_all_out" {
+  security_group_id = aws_security_group.portfolio_alb_sg.id
+  ip_protocol = "-1"
+  cidr_ipv4 = "0.0.0.0/0"
+}
+
+resource "aws_lb" "portfolio_alb" {
+  name = "portfolio-lb"
+  load_balancer_type = "application"
+  security_groups = [
+    aws_security_group.portfolio_alb_sg.id
+  ]
+  subnets = [
+    aws_subnet.portfolio_public_subnet_a.id,
+    aws_subnet.portfolio_public_subnet_b.id
+  ]
+
+  enable_deletion_protection = true
+}
+
+resource "aws_lb_target_group" "portfolio_tg" {
+  name = "portfolio-tg"
+  vpc_id = aws_vpc.portfolio_vpc.id
+  port = 80
+  protocol = "HTTP"
+
+  health_check {
+    path = "/"
+  }
+}
+
+resource "aws_lb_listener" "portfolio_http" {
+  load_balancer_arn = aws_lb.portfolio_alb.arn
+  port = 80
+  protocol = "HTTP"
+
+  default_action {
+    type = "forward"
+    target_group_arn = aws_lb_target_group.portfolio_tg.arn
+  }
+}
 
 # ASG
+resource "aws_iam_role" "ec2_ssm_role" {
+  name = "portfolio-ec2-ssm-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = "sts:AssumeRole"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ssm_policy" {
+  role = aws_iam_role.ec2_ssm_role.id
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_instance_profile" "portfolio_ec2_profile" {
+  name = "portfolio-ec2-profile"
+  role = aws_iam_role.ec2_ssm_role.id
+}
+
+resource "aws_security_group" "portfolio_asg_sg" {
+  name = "portfolio-asg-sg"
+  vpc_id = aws_vpc.portfolio_vpc.id
+}
+
+resource "aws_vpc_security_group_ingress_rule" "portfolio_asg_http_from_alb" {
+  security_group_id = aws_security_group.portfolio_asg_sg.id
+  referenced_security_group_id = aws_security_group.portfolio_alb_sg.id
+  ip_protocol = "tcp"
+  from_port = 80
+  to_port = 80
+}
+
+resource "aws_vpc_security_group_egress_rule" "portfolio_asg_all_out" {
+  security_group_id = aws_security_group.portfolio_asg_sg.id
+  ip_protocol = "-1"
+  cidr_ipv4 = "0.0.0.0/0"
+}
+
+resource "aws_launch_template" "portfolio_lt" {
+  name_prefix = "portfolio-lt-"
+  image_id = "ami-0389ea382ca31bd7f"
+  instance_type = "t3.micro"
+  iam_instance_profile {
+    arn = aws_iam_instance_profile.portfolio_ec2_profile.arn
+  }
+
+  vpc_security_group_ids = [
+    aws_security_group.portfolio_asg_sg.id
+  ]
+
+  # TODO
+  user_data = ""
+}
+
+resource "aws_autoscaling_group" "portfolio_asg" {
+  name = "portfolio-asg"
+  desired_capacity = 2
+  min_size = 2
+  max_size = 4
+  vpc_zone_identifier = [
+    aws_subnet.portfolio_private_subnet_a.id,
+    aws_subnet.portfolio_private_subnet_b.id
+  ]
+  target_group_arns = [
+    aws_lb_target_group.portfolio_tg.arn
+  ]
+
+  launch_template {
+    id = aws_launch_template.portfolio_lt.id
+    version = "$Latest"
+  }
+}
 
 # RDS
 
 # S3
 
 # Cloudfront
+
+# WAF

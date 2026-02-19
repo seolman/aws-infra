@@ -194,6 +194,15 @@ resource "aws_subnet" "portfolio_database_subnet_b" {
   }
 }
 
+resource "aws_subnet" "portfolio_database_subnet_c" {
+  vpc_id = aws_vpc.portfolio_vpc.id
+  availability_zone = "ap-northeast-2c"
+  cidr_block = "10.0.96.0/20"
+  tags = {
+    Name = "portfolio-database-subnet-c"
+  }
+}
+
 resource "aws_route_table" "portfolio_database_rt" {
   vpc_id = aws_vpc.portfolio_vpc.id
   tags = {
@@ -209,6 +218,20 @@ resource "aws_route_table_association" "portfolio_database_assoc_a" {
 resource "aws_route_table_association" "portfolio_database_assoc_b" {
   subnet_id = aws_subnet.portfolio_database_subnet_b.id
   route_table_id = aws_route_table.portfolio_database_rt.id
+}
+
+resource "aws_route_table_association" "portfolio_database_assoc_c" {
+  subnet_id = aws_subnet.portfolio_database_subnet_c.id
+  route_table_id = aws_route_table.portfolio_database_rt.id
+}
+
+resource "aws_db_subnet_group" "portfolio_subnet_group" {
+  name = "portfolio-subnet-group"
+  subnet_ids = [
+    aws_subnet.portfolio_database_subnet_a.id,
+    aws_subnet.portfolio_database_subnet_b.id,
+    aws_subnet.portfolio_database_subnet_c.id,
+  ]
 }
 
 # ALB
@@ -242,8 +265,6 @@ resource "aws_lb" "portfolio_alb" {
     aws_subnet.portfolio_public_subnet_a.id,
     aws_subnet.portfolio_public_subnet_b.id
   ]
-
-  enable_deletion_protection = true
 }
 
 resource "aws_lb_target_group" "portfolio_tg" {
@@ -348,6 +369,42 @@ resource "aws_autoscaling_group" "portfolio_asg" {
 }
 
 # RDS
+resource "aws_security_group" "portfolio_db_sg" {
+  name = "portfolio-db-sg"
+  vpc_id = aws_vpc.portfolio_vpc.id
+}
+
+resource "aws_vpc_security_group_ingress_rule" "portfolio_db_in" {
+  security_group_id = aws_security_group.portfolio_db_sg.id
+  referenced_security_group_id = aws_security_group.portfolio_asg_sg.id
+  ip_protocol = "tcp"
+  to_port = 5432
+  from_port = 5432
+}
+
+resource "aws_kms_key" "portfolio_db_key" {
+  tags = {
+    Name = "portfolio-db-key"
+  }
+}
+
+resource "aws_db_instance" "portfolio_db" {
+  allocated_storage = 20
+  identifier = "portfolio-db"
+  instance_class = "db.t3.micro"
+  engine = "postgres"
+  engine_version = "17.6"
+  # multi_az = true
+  db_name = "portfolio"
+  username = "postgres"
+  manage_master_user_password = true
+  master_user_secret_kms_key_id = aws_kms_key.portfolio_db_key.key_id
+  db_subnet_group_name = aws_db_subnet_group.portfolio_subnet_group.id
+  vpc_security_group_ids = [
+    aws_security_group.portfolio_db_sg.id
+  ]
+  skip_final_snapshot = true
+}
 
 # S3
 

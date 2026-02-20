@@ -345,8 +345,16 @@ resource "aws_launch_template" "portfolio_lt" {
     aws_security_group.portfolio_asg_sg.id
   ]
 
-  # TODO
-  user_data = ""
+  user_data = base64encode(<<-EOF
+    #!/bin/bash
+    dnf update -y
+    dnf install -y nginx
+    systemctl start nginx
+    systemctl enable nginx
+    echo "<h1>Welcome to Portfolio Web Service (Nginx)</h1>" > /usr/share/nginx/html/index.html
+    echo "<h3>Running on: $(hostname -f)</h3>" >> /usr/share/nginx/html/index.html
+    EOF
+  )
 }
 
 resource "aws_autoscaling_group" "portfolio_asg" {

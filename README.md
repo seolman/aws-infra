@@ -8,6 +8,7 @@ Security Group
 
 WAF
 
+ACM
 
 ## 컴퓨팅
 
@@ -30,6 +31,8 @@ Redis
 CloudWatch
 
 ## 데이터 엔지니어링
+
+Kenisis
 
 ## 머신러닝
 

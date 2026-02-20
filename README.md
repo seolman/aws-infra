@@ -1,39 +1,75 @@
 # 인프라 데모
 
-## 네크워크
+## 네트워킹 및 콘텐츠 전송
 
 VPC
 
-Security Group
-
-WAF
+Route53
 
 ACM
 
-## 컴퓨팅
+ALB
+
+IGW
+
+NGW
 
 Cloudfront
 
-ALB
+VPC Endpoint
+
+## 컴퓨팅
 
 ASG
 
-## 데이터베이스
+Fargate
 
-RDS
+Lambda
+
+## 데이터베이스 및 스토리지
 
 S3
 
+RDS
+
 Redis
 
-## 모니터링
+Backup
+
+## 메시징
+
+Eventbridge
+
+SNS
+
+SQS
+
+## 테이터 엔지니어링 및 머신러닝
+
+Kinesis Data Streams
+
+Kinesis Firehose
+
+Glue
+
+Athena
+
+SageMaker
+
+## 보안 및 관제
+
+IAM
+
+KMS
+
+Secrets Manager
 
 CloudWatch
 
-## 데이터 엔지니어링
+X-Ray
 
-Kenisis
+CloudTrail
 
-## 머신러닝
+WAF
 
-
+Shield

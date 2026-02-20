@@ -86,6 +86,7 @@ resource "aws_route_table_association" "portfolio_public_assoc_b" {
   route_table_id = aws_default_route_table.public_rt.id
 }
 
+# private subnet start
 resource "aws_subnet" "portfolio_private_subnet_a" {
   vpc_id = aws_vpc.portfolio_vpc.id
   availability_zone = "ap-northeast-2a"
@@ -175,6 +176,8 @@ resource "aws_route" "private_route_b" {
   destination_cidr_block = "0.0.0.0/0"
   nat_gateway_id = aws_nat_gateway.portfolio_ngw_b.id
 }
+
+# private subnet end
 
 resource "aws_subnet" "portfolio_database_subnet_a" {
   vpc_id = aws_vpc.portfolio_vpc.id
@@ -359,9 +362,9 @@ resource "aws_launch_template" "portfolio_lt" {
 
 resource "aws_autoscaling_group" "portfolio_asg" {
   name = "portfolio-asg"
-  desired_capacity = 2
-  min_size = 2
-  max_size = 4
+  desired_capacity = 1
+  min_size = 1
+  max_size = 2
   vpc_zone_identifier = [
     aws_subnet.portfolio_private_subnet_a.id,
     aws_subnet.portfolio_private_subnet_b.id
@@ -373,6 +376,11 @@ resource "aws_autoscaling_group" "portfolio_asg" {
   launch_template {
     id = aws_launch_template.portfolio_lt.id
     version = "$Latest"
+  }
+  tag {
+    key = "Name"
+    value = "portfolio-instance"
+    propagate_at_launch = true
   }
 }
 
@@ -415,7 +423,128 @@ resource "aws_db_instance" "portfolio_db" {
 }
 
 # S3
+resource "aws_s3_bucket" "portfolio_frontend_bucket" {
+  bucket = "portfolio-frontend-bucket-134679"
+}
+
+resource "aws_s3_bucket_public_access_block" "portfolio_frontend_bucket_block" {
+  bucket = aws_s3_bucket.portfolio_frontend_bucket.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# TODO versioning
+# TODO encryption
+
+resource "aws_s3_bucket_lifecycle_configuration" "portfolio_frontend_bucket_lifecycle" {
+  bucket = aws_s3_bucket.portfolio_frontend_bucket.id
+  rule {
+    id = "move-to-onezone-ia"
+    status = "Enabled"
+    filter {}
+    transition {
+      days = 30
+      storage_class = "ONEZONE_IA"
+    }
+  }
+}
 
 # Cloudfront
+resource "aws_cloudfront_origin_access_control" "portfolio_frontend_oac" {
+  name = "portfolio-frontend-oac"
+  origin_access_control_origin_type = "s3"
+  signing_behavior = "always"
+  signing_protocol = "sigv4"
+}
+
+resource "aws_cloudfront_distribution" "portfolio_frontend_cdn" {
+  enabled = true
+  is_ipv6_enabled = true
+  default_root_object = "index.html"
+  price_class = "PriceClass_100"
+
+  origin {
+    domain_name = aws_s3_bucket.portfolio_frontend_bucket.bucket_domain_name
+    origin_id = "portfolio-frontend"
+    origin_access_control_id = aws_cloudfront_origin_access_control.portfolio_frontend_oac.id
+  }
+  default_cache_behavior {
+    allowed_methods  = ["GET", "HEAD"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "portfolio-frontend"
+
+    forwarded_values {
+      query_string = false
+      cookies { forward = "none" }
+    }
+
+    viewer_protocol_policy = "redirect-to-https"
+    min_ttl                = 0
+    default_ttl            = 3600
+    max_ttl                = 86400
+  }
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "portfolio_frontend_policy" {
+  bucket = aws_s3_bucket.portfolio_frontend_bucket.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action   = "s3:GetObject"
+        Effect   = "Allow"
+        Resource = "${aws_s3_bucket.portfolio_frontend_bucket.arn}/*"
+        Principal = {
+          Service = "cloudfront.amazonaws.com"
+        }
+        Condition = {
+          StringEquals = {
+            "AWS:SourceArn" = aws_cloudfront_distribution.portfolio_frontend_cdn.arn
+          }
+        }
+      }
+    ]
+  })
+}
+
+# ACM
+
+# Route53
+
+# Redis
+
+# TODO frontend
+# TODO express backend
+
+# CloudWatch
+
+# X-Ray
 
 # WAF
+
+# Shield
+
+# Fargate
+
+# Eventbridge
+
+# SNS
+
+# SQS
+
+# Kinesis Data Streams
+
+# Athena
+
+# ML
+

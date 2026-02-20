@@ -238,7 +238,6 @@ resource "aws_db_subnet_group" "portfolio_subnet_group" {
 }
 
 # ALB
-# TODO https
 resource "aws_security_group" "portfolio_alb_sg" {
   name = "portfolio-alb-sg"
   vpc_id = aws_vpc.portfolio_vpc.id
@@ -518,25 +517,26 @@ resource "aws_s3_bucket_policy" "portfolio_frontend_policy" {
 }
 
 # ACM
+resource "aws_acm_certificate" "portfolio_cert" {
+
+}
 
 # Route53
 
 # Redis
 
-# TODO frontend
-# TODO express backend
-
 # CloudWatch
 
 # X-Ray
+
+# TODO frontend
+# TODO express backend
 
 # WAF
 
 # Shield
 
 # Fargate
-
-# Eventbridge
 
 # SNS
 

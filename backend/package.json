@@ -1,0 +1,22 @@
+{
+    "$schema": "https://www.schemastore.org/package.json",
+    "name": "portfolio-backend",
+    "version": "1.0.0",
+    "description": "demo backend for aws infra portfoilo",
+    "main": "./dist/index.js",
+    "scripts": {
+        "build": "tsc",
+        "start": "node ."
+    },
+    "author": "seolman",
+    "license": "MIT",
+    "type": "module",
+    "dependencies": {
+        "express": "^5.2.1"
+    },
+    "devDependencies": {
+        "@types/express": "^5.0.6",
+        "@types/node": "^25.3.0",
+        "typescript": "^5.9.3"
+    }
+}

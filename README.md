@@ -1,5 +1,7 @@
 # 인프라 데모
 
+![overview](./assets/aws_1.png)
+
 ## 네트워킹 및 콘텐츠 전송
 
 VPC
@@ -42,7 +44,7 @@ SNS
 
 SQS
 
-## 테이터 엔지니어링 및 머신러닝
+## 데이터 엔지니어링 및 머신러닝
 
 Kinesis Data Streams
 

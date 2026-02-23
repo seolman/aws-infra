@@ -1,6 +1,6 @@
 # 인프라 데모
 
-![overview](./assets/aws_1.png)
+![overview](./assets/aws_overview.png)
 
 ## 네트워킹 및 콘텐츠 전송
 

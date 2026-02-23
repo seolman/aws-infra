@@ -1,13 +1,15 @@
 import express, { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { eq } from "drizzle-orm";
-
 import { db } from "./db/index.js";
 import { users } from "./db/schema.js";
+import { eq } from "drizzle-orm";
+import { Redis } from "ioredis";
 
 const app = express();
 const JWT_SECRET = process.env.JWT_SECRET || "demo-secret-key";
+
+const redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379")
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
@@ -36,6 +38,8 @@ app.post("/api/signup", async (req: Request, res: Response) => {
       email,
       password: hashedPassword,
     }).returning({ id: users.id, email: users.email });
+
+    // TODO aws sns
 
     const token = jwt.sign({ id: newUser[0].id, email: newUser[0].email }, JWT_SECRET);
     res.status(201).json({ user: newUser[0], token });
@@ -67,10 +71,44 @@ app.post("/api/login", async (req: Request, res: Response) => {
   }
 });
 
-// Profile
+// Profile with Redis Caching
 app.get("/api/profile", authenticateToken, async (req: Request, res: Response) => {
-  const user = (req as any).user;
-  res.json({ user });
+  const userPayload = (req as any).user;
+  const cacheKey = `user:profile:${userPayload.id}`;
+
+  try {
+    // 1. Try to get data from Redis
+    const cachedUser = await redis.get(cacheKey);
+
+    if (cachedUser) {
+      console.log("Cache Hit: Returning from Redis");
+      return res.json({ 
+        user: JSON.parse(cachedUser),
+        source: "cache" 
+      });
+    }
+
+    // 2. If not in Redis, get from Database
+    console.log("Cache Miss: Querying Database");
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, userPayload.id),
+    });
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const userData = { id: user.id, email: user.email };
+
+    // 3. Store in Redis for 1 hour
+    await redis.set(cacheKey, JSON.stringify(userData), "EX", 3600);
+
+    res.json({ 
+      user: userData,
+      source: "db" 
+    });
+  } catch (error) {
+    console.error("Redis/DB Error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
 });
 
 app.get("/health", (req, res) => {

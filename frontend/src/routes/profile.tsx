@@ -48,6 +48,15 @@ function ProfileComponent() {
       <h2>Profile</h2>
       <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
         <p>Email: {data.user.email}</p>
+        <p style={{ 
+          padding: "0.5rem", 
+          borderRadius: "4px", 
+          backgroundColor: data.source === "cache" ? "#d4edda" : "#fff3cd",
+          color: data.source === "cache" ? "#155724" : "#856404",
+          border: `1px solid ${data.source === "cache" ? "#c3e6cb" : "#ffeeba"}`
+        }}>
+          Data Source: <strong>{data.source.toUpperCase()}</strong>
+        </p>
         <button onClick={handleLogout}>Logout</button>
       </div>
     </div>

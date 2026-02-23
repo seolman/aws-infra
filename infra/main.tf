@@ -518,17 +518,10 @@ resource "aws_acm_certificate" "portfolio_cert" {
 
 }
 
+
 # Route53
 
 # Redis
-
-# CloudWatch
-
-# X-Ray
-
-# WAF
-
-# Shield
 
 # Fargate
 
@@ -536,9 +529,16 @@ resource "aws_acm_certificate" "portfolio_cert" {
 
 # SQS
 
+# WAF
+
+# Shield
+
+# CloudWatch
+
+# X-Ray
+
 # Kinesis Data Streams
 
 # Athena
 
 # ML
-

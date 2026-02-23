@@ -4,9 +4,13 @@ route53
 
 acm
 
-frontend
+elasticache
 
-backend
+fargate
+
+sns
+
+sqs
 
 cloudwatch
 
@@ -15,4 +19,10 @@ waf
 shield
 
 x-ray
+
+data streams
+
+athena
+
+ml
 

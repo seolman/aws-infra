@@ -258,7 +258,7 @@ resource "aws_vpc_security_group_egress_rule" "portfolio_alb_all_out" {
 }
 
 resource "aws_lb" "portfolio_alb" {
-  name = "portfolio-lb"
+  name = "portfolio-alb"
   load_balancer_type = "application"
   security_groups = [
     aws_security_group.portfolio_alb_sg.id
@@ -434,9 +434,6 @@ resource "aws_s3_bucket_public_access_block" "portfolio_frontend_bucket_block" {
   restrict_public_buckets = true
 }
 
-# TODO versioning
-# TODO encryption
-
 resource "aws_s3_bucket_lifecycle_configuration" "portfolio_frontend_bucket_lifecycle" {
   bucket = aws_s3_bucket.portfolio_frontend_bucket.id
   rule {
@@ -465,7 +462,7 @@ resource "aws_cloudfront_distribution" "portfolio_frontend_cdn" {
   price_class = "PriceClass_100"
 
   origin {
-    domain_name = aws_s3_bucket.portfolio_frontend_bucket.bucket_domain_name
+    domain_name = aws_s3_bucket.portfolio_frontend_bucket.bucket_regional_domain_name
     origin_id = "portfolio-frontend"
     origin_access_control_id = aws_cloudfront_origin_access_control.portfolio_frontend_oac.id
   }
@@ -528,9 +525,6 @@ resource "aws_acm_certificate" "portfolio_cert" {
 # CloudWatch
 
 # X-Ray
-
-# TODO frontend
-# TODO express backend
 
 # WAF
 

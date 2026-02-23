@@ -38,8 +38,6 @@ Backup
 
 ## 메시징
 
-Eventbridge
-
 SNS
 
 SQS

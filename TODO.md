@@ -6,11 +6,11 @@ acm
 
 elasticache
 
-fargate
-
 sns
 
 sqs
+
+lambda
 
 cloudwatch
 

@@ -1,0 +1,33 @@
+name: Backend Deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+
+      - name: setup node
+        uses: actions/setup-node@v6
+
+      - name: install dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: build project
+        run: npm run build
+        working-directory: backend
+
+      # TODO create .env
+      # TODO zip
+      # TODO aws configure
+      # TODO aws s3
+      # TODO aws asg restart

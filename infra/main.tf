@@ -347,6 +347,7 @@ resource "aws_launch_template" "portfolio_lt" {
     aws_security_group.portfolio_asg_sg.id
   ]
 
+  # TODO
   user_data = base64encode(<<-EOF
     #!/bin/bash
     dnf update -y
@@ -461,11 +462,46 @@ resource "aws_cloudfront_distribution" "portfolio_frontend_cdn" {
   default_root_object = "index.html"
   price_class = "PriceClass_100"
 
+  aliases = ["demo.seolman.dev"]
+
   origin {
     domain_name = aws_s3_bucket.portfolio_frontend_bucket.bucket_regional_domain_name
     origin_id = "portfolio-frontend"
     origin_access_control_id = aws_cloudfront_origin_access_control.portfolio_frontend_oac.id
   }
+
+  origin {
+    origin_id   = "portfolio-backend"
+    domain_name = aws_lb.portfolio_alb.dns_name
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  ordered_cache_behavior {
+    path_pattern     = "/api/*"
+    target_origin_id = "portfolio-backend"
+
+    allowed_methods  = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods   = ["GET", "HEAD"]
+
+    forwarded_values {
+      query_string = true
+      headers      = ["Authorization", "Origin"]
+      cookies {
+        forward = "all"
+      }
+    }
+
+    viewer_protocol_policy = "redirect-to-https"
+    min_ttl                = 0
+    default_ttl            = 0
+    max_ttl                = 0
+  }
+
   default_cache_behavior {
     allowed_methods  = ["GET", "HEAD"]
     cached_methods   = ["GET", "HEAD"]
@@ -482,13 +518,17 @@ resource "aws_cloudfront_distribution" "portfolio_frontend_cdn" {
     max_ttl                = 86400
   }
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certificate_arn = aws_acm_certificate.portfolio_cert.arn
+    ssl_support_method = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
   }
   restrictions {
     geo_restriction {
       restriction_type = "none"
     }
   }
+
+  depends_on = [ aws_acm_certificate_validation.portfolio_cert_valid ]
 }
 
 resource "aws_s3_bucket_policy" "portfolio_frontend_policy" {
@@ -513,21 +553,182 @@ resource "aws_s3_bucket_policy" "portfolio_frontend_policy" {
   })
 }
 
-# ACM
-resource "aws_acm_certificate" "portfolio_cert" {
-
-}
-
-
 # Route53
 
-# Redis
+resource "aws_route53_zone" "portfolio_zone" {
+  name = "demo.seolman.dev"
+}
 
-# Fargate
+# ACM
+provider "aws" {
+  alias = "us_east_1"
+  region = "us-east-1"
+}
+
+resource "aws_acm_certificate" "portfolio_cert" {
+  provider = aws.us_east_1
+  domain_name = "demo.seolman.dev"
+  validation_method = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_route53_record" "portfolio_record" {
+  for_each = {
+    for dvo in aws_acm_certificate.portfolio_cert.domain_validation_options : dvo.domain_name => {
+      name = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type = dvo.resource_record_type
+    }
+  }
+
+  allow_overwrite = true
+  name = each.value.name
+  records = [each.value.record]
+  type = each.value.type
+  ttl = 60
+  zone_id = aws_route53_zone.portfolio_zone.zone_id
+}
+
+resource "aws_acm_certificate_validation" "portfolio_cert_valid" {
+  provider = aws.us_east_1
+  certificate_arn = aws_acm_certificate.portfolio_cert.arn
+  validation_record_fqdns = [ for record in aws_route53_record.portfolio_record : record.fqdn ]
+}
+
+resource "aws_route53_record" "portfolio_a_record" {
+  name = "demo.seolman.dev"
+  zone_id = aws_route53_zone.portfolio_zone.zone_id
+  type = "A"
+
+  alias {
+    name = aws_cloudfront_distribution.portfolio_frontend_cdn.domain_name
+    zone_id = aws_cloudfront_distribution.portfolio_frontend_cdn.hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+
+# Redis
+resource "aws_elasticache_subnet_group" "portfolio_redis_subnet_group" {
+  name       = "portfolio-redis-subnet-group"
+  subnet_ids = [aws_subnet.portfolio_private_subnet_a.id, aws_subnet.portfolio_private_subnet_b.id]
+}
+
+resource "aws_security_group" "portfolio_redis_sg" {
+  name   = "portfolio-redis-sg"
+  vpc_id = aws_vpc.portfolio_vpc.id
+}
+
+resource "aws_vpc_security_group_ingress_rule" "portfolio_redis_in" {
+  security_group_id            = aws_security_group.portfolio_redis_sg.id
+  referenced_security_group_id = aws_security_group.portfolio_asg_sg.id
+  ip_protocol                  = "tcp"
+  from_port                    = 6379
+  to_port                      = 6379
+}
+
+resource "aws_elasticache_cluster" "portfolio_redis" {
+  cluster_id           = "portfolio-redis"
+  engine               = "redis"
+  node_type            = "cache.t3.micro"
+  num_cache_nodes      = 1
+  parameter_group_name = "default.redis7"
+  port                 = 6379
+  subnet_group_name    = aws_elasticache_subnet_group.portfolio_redis_subnet_group.name
+  security_group_ids   = [aws_security_group.portfolio_redis_sg.id]
+}
+
+# Lambda
+resource "aws_iam_role" "portfolio_lambda_role" {
+  name = "portfolio-lambda-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_basic" {
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+  role       = aws_iam_role.portfolio_lambda_role.name
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_sqs" {
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole"
+  role       = aws_iam_role.portfolio_lambda_role.name
+}
+
+resource "aws_lambda_function" "portfolio_worker" {
+  function_name = "portfolio-email-worker"
+  role          = aws_iam_role.portfolio_lambda_role.arn
+  handler       = "index.handler"
+  runtime       = "nodejs20.x"
+  filename      = "worker.zip" # This should be created by CI/CD
+
+  lifecycle {
+    ignore_changes = [filename]
+  }
+}
 
 # SNS
+resource "aws_sns_topic" "portfolio_signup_topic" {
+  name = "portfolio-signup-topic"
+}
 
 # SQS
+resource "aws_sqs_queue" "portfolio_email_queue" {
+  name = "portfolio-email-queue"
+}
+
+resource "aws_sns_topic_subscription" "portfolio_sns_to_sqs" {
+  topic_arn = aws_sns_topic.portfolio_signup_topic.arn
+  protocol  = "sqs"
+  endpoint  = aws_sqs_queue.portfolio_email_queue.arn
+}
+
+resource "aws_sqs_queue_policy" "portfolio_email_queue_policy" {
+  queue_url = aws_sqs_queue.portfolio_email_queue.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = "*"
+      Action    = "sqs:SendMessage"
+      Resource  = aws_sqs_queue.portfolio_email_queue.arn
+      Condition = {
+        ArnEquals = {
+          "aws:SourceArn" = aws_sns_topic.portfolio_signup_topic.arn
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_lambda_event_source_mapping" "portfolio_sqs_trigger" {
+  event_source_arn = aws_sqs_queue.portfolio_email_queue.arn
+  function_name    = aws_lambda_function.portfolio_worker.arn
+}
+
+# IAM Policy for Backend to publish to SNS
+resource "aws_iam_role_policy" "portfolio_backend_sns_policy" {
+  name = "portfolio-backend-sns-policy"
+  role = aws_iam_role.ec2_ssm_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "sns:Publish"
+      Resource = aws_sns_topic.portfolio_signup_topic.arn
+    }]
+  })
+}
 
 # WAF
 

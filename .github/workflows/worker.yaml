@@ -1,0 +1,20 @@
+name: Worker Deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "worker/**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+
+      # TODO zip
+      # TODO aws configure
+      # TODO update lambda

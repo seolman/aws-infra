@@ -1,17 +1,5 @@
 # TODO
 
-route53
-
-acm
-
-elasticache
-
-sns
-
-sqs
-
-lambda
-
 cloudwatch
 
 waf

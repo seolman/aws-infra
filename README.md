@@ -24,8 +24,6 @@ VPC Endpoint
 
 ASG
 
-Fargate
-
 Lambda
 
 ## 데이터베이스 및 스토리지

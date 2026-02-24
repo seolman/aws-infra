@@ -63,27 +63,27 @@ resource "aws_subnet" "portfolio_public_subnet_b" {
   }
 }
 
-resource "aws_default_route_table" "public_rt" {
-  default_route_table_id = aws_vpc.portfolio_vpc.default_route_table_id
+resource "aws_route_table" "portfolio_public_rt_a" {
+  vpc_id = aws_vpc.portfolio_vpc.id
   tags = {
-    Name = "portfolio-public-route-table"
+    Name = "portfolio-public-route-table-a"
   }
 }
 
 resource "aws_route" "public_internet_r" {
-  route_table_id = aws_default_route_table.public_rt.id
+  route_table_id = aws_route_table.portfolio_public_rt_a.id
   destination_cidr_block = "0.0.0.0/0"
   gateway_id = aws_internet_gateway.portfolio_igw.id
 }
 
 resource "aws_route_table_association" "portfolio_public_assoc_a" {
   subnet_id = aws_subnet.portfolio_public_subnet_a.id
-  route_table_id = aws_default_route_table.public_rt.id
+  route_table_id = aws_route_table.portfolio_public_rt_a.id
 }
 
 resource "aws_route_table_association" "portfolio_public_assoc_b" {
   subnet_id = aws_subnet.portfolio_public_subnet_b.id
-  route_table_id = aws_default_route_table.public_rt.id
+  route_table_id = aws_route_table.portfolio_public_rt_a.id
 }
 
 # private subnet start
@@ -311,6 +311,24 @@ resource "aws_iam_role_policy_attachment" "ssm_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
+resource "aws_iam_role_policy" "ec2_s3_readonly" {
+  name = "portfolio-ec2-s3-readonly"
+  role = aws_iam_role.ec2_ssm_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:ListBucket"]
+        Resource = [
+          aws_s3_bucket.portfolio_backend_artifacts.arn,
+          "${aws_s3_bucket.portfolio_backend_artifacts.arn}/*"
+        ]
+      }
+    ]
+  })
+}
+
 resource "aws_iam_instance_profile" "portfolio_ec2_profile" {
   name = "portfolio-ec2-profile"
   role = aws_iam_role.ec2_ssm_role.id
@@ -337,6 +355,7 @@ resource "aws_vpc_security_group_egress_rule" "portfolio_asg_all_out" {
 
 resource "aws_launch_template" "portfolio_lt" {
   name_prefix = "portfolio-lt-"
+  # WARN Hardcoded
   image_id = "ami-0389ea382ca31bd7f"
   instance_type = "t3.micro"
   iam_instance_profile {
@@ -347,15 +366,37 @@ resource "aws_launch_template" "portfolio_lt" {
     aws_security_group.portfolio_asg_sg.id
   ]
 
-  # TODO
+  # User Data for Backend
   user_data = base64encode(<<-EOF
     #!/bin/bash
     dnf update -y
-    dnf install -y nginx
+    dnf install -y nginx nodejs
+    
+    # Configure Nginx as a reverse proxy
+    cat <<EOP > /etc/nginx/conf.d/backend.conf
+    server {
+        listen 80;
+        location / {
+            proxy_pass http://localhost:3000;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+        }
+    }
+    EOP
+    rm -f /etc/nginx/conf.d/default.conf
     systemctl start nginx
     systemctl enable nginx
-    echo "<h1>Welcome to Portfolio Web Service (Nginx)</h1>" > /usr/share/nginx/html/index.html
-    echo "<h3>Running on: $(hostname -f)</h3>" >> /usr/share/nginx/html/index.html
+
+    # Download backend artifact
+    mkdir -p /home/ec2-user/app
+    aws s3 cp s3://${aws_s3_bucket.portfolio_backend_artifacts.bucket}/backend.zip /home/ec2-user/app/backend.zip
+    unzip /home/ec2-user/app/backend.zip -d /home/ec2-user/app/
+    
+    cd /home/ec2-user/app
+    # In a real scenario, you'd use a process manager like pm2
+    # For simplicity, we just run it in the background
+    # TODO: npm install if node_modules not in zip
+    nohup node dist/index.js > app.log 2>&1 &
     EOF
   )
 }
@@ -422,9 +463,22 @@ resource "aws_db_instance" "portfolio_db" {
   skip_final_snapshot = true
 }
 
-# S3
+# S3 for Frontend
 resource "aws_s3_bucket" "portfolio_frontend_bucket" {
   bucket = "portfolio-frontend-bucket-134679"
+}
+
+# S3 for Backend Artifacts
+resource "aws_s3_bucket" "portfolio_backend_artifacts" {
+  bucket = "portfolio-backend-artifacts-134679"
+}
+
+resource "aws_s3_bucket_public_access_block" "portfolio_backend_artifacts_block" {
+  bucket = aws_s3_bucket.portfolio_backend_artifacts.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
 }
 
 resource "aws_s3_bucket_public_access_block" "portfolio_frontend_bucket_block" {
@@ -730,13 +784,13 @@ resource "aws_iam_role_policy" "portfolio_backend_sns_policy" {
   })
 }
 
-# WAF
-
-# Shield
-
 # CloudWatch
 
 # X-Ray
+
+# WAF
+
+# Shield
 
 # Kinesis Data Streams
 

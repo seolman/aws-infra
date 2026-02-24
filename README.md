@@ -4,7 +4,7 @@
 React 프론트엔드와 Node.js 백엔드 서비스를 배포하는 End-to-End 데모 프로젝트입니다.
 단순한 인프라 구성을 넘어 보안, 확장성, 가용성을 고려한 현대적인 아키텍처를 지향합니다.
 
-![overview](./assets/aws_overview.png)
+![overview](./assets/aws_architecture.png)
 
 ## 🏗 Key Architecture Highlights
 

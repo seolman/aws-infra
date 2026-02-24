@@ -251,6 +251,14 @@ resource "aws_vpc_security_group_ingress_rule" "portfolio_alb_http_in" {
   from_port = 80
 }
 
+resource "aws_vpc_security_group_ingress_rule" "portfolio_alb_https_in" {
+  security_group_id = aws_security_group.portfolio_alb_sg.id
+  ip_protocol       = "tcp"
+  cidr_ipv4         = "0.0.0.0/0"
+  to_port           = 443
+  from_port         = 443
+}
+
 resource "aws_vpc_security_group_egress_rule" "portfolio_alb_all_out" {
   security_group_id = aws_security_group.portfolio_alb_sg.id
   ip_protocol = "-1"
@@ -282,11 +290,28 @@ resource "aws_lb_target_group" "portfolio_tg" {
 
 resource "aws_lb_listener" "portfolio_http" {
   load_balancer_arn = aws_lb.portfolio_alb.arn
-  port = 80
-  protocol = "HTTP"
+  port              = 80
+  protocol          = "HTTP"
 
   default_action {
-    type = "forward"
+    type = "redirect"
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+}
+
+resource "aws_lb_listener" "portfolio_https" {
+  load_balancer_arn = aws_lb.portfolio_alb.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = aws_acm_certificate_validation.portfolio_alb_cert_valid.certificate_arn
+
+  default_action {
+    type             = "forward"
     target_group_arn = aws_lb_target_group.portfolio_tg.arn
   }
 }
@@ -371,16 +396,16 @@ resource "aws_launch_template" "portfolio_lt" {
     #!/bin/bash
     dnf update -y
     dnf install -y nginx nodejs
-    
+
     # Configure Nginx as a reverse proxy
     cat <<EOP > /etc/nginx/conf.d/backend.conf
     server {
-        listen 80;
-        location / {
-            proxy_pass http://localhost:3000;
-            proxy_set_header Host \$host;
-            proxy_set_header X-Real-IP \$remote_addr;
-        }
+      listen 80;
+      location / {
+        proxy_pass http://localhost:3000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+      }
     }
     EOP
     rm -f /etc/nginx/conf.d/default.conf
@@ -391,7 +416,7 @@ resource "aws_launch_template" "portfolio_lt" {
     mkdir -p /home/ec2-user/app
     aws s3 cp s3://${aws_s3_bucket.portfolio_backend_artifacts.bucket}/backend.zip /home/ec2-user/app/backend.zip
     unzip /home/ec2-user/app/backend.zip -d /home/ec2-user/app/
-    
+
     cd /home/ec2-user/app
     # In a real scenario, you'd use a process manager like pm2
     # For simplicity, we just run it in the background
@@ -526,11 +551,11 @@ resource "aws_cloudfront_distribution" "portfolio_frontend_cdn" {
 
   origin {
     origin_id   = "portfolio-backend"
-    domain_name = aws_lb.portfolio_alb.dns_name
+    domain_name = "api.demo.seolman.dev"
     custom_origin_config {
       http_port              = 80
       https_port             = 443
-      origin_protocol_policy = "http-only"
+      origin_protocol_policy = "https-only"
       origin_ssl_protocols   = ["TLSv1.2"]
     }
   }
@@ -613,7 +638,51 @@ resource "aws_route53_zone" "portfolio_zone" {
   name = "demo.seolman.dev"
 }
 
-# ACM
+# ACM for ALB (Seoul Region)
+resource "aws_acm_certificate" "portfolio_alb_cert" {
+  domain_name       = "api.demo.seolman.dev"
+  validation_method = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_route53_record" "portfolio_alb_cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.portfolio_alb_cert.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = aws_route53_zone.portfolio_zone.zone_id
+}
+
+resource "aws_acm_certificate_validation" "portfolio_alb_cert_valid" {
+  certificate_arn         = aws_acm_certificate.portfolio_alb_cert.arn
+  validation_record_fqdns = [for record in aws_route53_record.portfolio_alb_cert_validation : record.fqdn]
+}
+
+resource "aws_route53_record" "portfolio_alb_api_record" {
+  name    = "api.demo.seolman.dev"
+  zone_id = aws_route53_zone.portfolio_zone.zone_id
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.portfolio_alb.dns_name
+    zone_id                = aws_lb.portfolio_alb.zone_id
+    evaluate_target_health = true
+  }
+}
+
+# ACM for Cloudfront (us-east-1)
 provider "aws" {
   alias = "us_east_1"
   region = "us-east-1"
